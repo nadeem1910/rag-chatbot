@@ -4,7 +4,7 @@ A simple Retrieval-Augmented Generation (RAG) chatbot built using Laravel, OpenR
 
 Users can upload documents (PDF/TXT) → backend extracts text → chunks → embeddings store → chatbot retrieves similar chunks → LLM generates context-aware answers.
 
-🚀 Features
+🚀 Features 
 ✅ Document Upload (PDF/Text)
 ✅ Automatic Chunking
 ✅ Embeddings using OpenRouter (free LLMs)
