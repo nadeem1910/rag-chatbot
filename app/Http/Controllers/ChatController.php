@@ -15,6 +15,24 @@ class ChatController extends Controller
         return view('chat');
     }
 
+    public function testAsk(Request $request)
+    {
+        $query = $request->input('message');
+        
+        $debug = "Raw input: " . var_export($request->all(), true) . "\n";
+        $debug .= "Message field: [" . $query . "]\n";
+        $debug .= "Message length: " . strlen($query ?? '') . "\n";
+        $debug .= "Is empty: " . (empty($query) ? 'YES' : 'NO') . "\n";
+        
+        Log::info($debug);
+        
+        return back()->with([
+            'query' => $query,
+            'answer' => 'Test successful! Your message was received: "' . $query . '"',
+            'debug' => $debug
+        ]);
+    }
+
     public function ask(Request $request)
     {
         // Debug: Log all request data
@@ -76,7 +94,9 @@ class ChatController extends Controller
             Log::info("Query embedding created successfully");
 
             // 2) Fetch all document embeddings from DB
-            $rows = DB::table('embeddings')->get();
+            $rows = DB::table('embeddings')
+                ->select('id', 'content', 'embedding')
+                ->get();
 
             Log::info("Found " . $rows->count() . " embeddings in database");
 
@@ -87,8 +107,11 @@ class ChatController extends Controller
                 ]);
             }
 
-            // 3) Calculate similarity with each chunk
+            // 3) Calculate similarity with each chunk (optimized)
             $scoredChunks = [];
+            
+            // Pre-calculate query magnitude once
+            $queryMag = sqrt(array_sum(array_map(fn($x) => $x * $x, $queryEmbedding)));
 
             foreach ($rows as $row) {
                 $docEmbedding = json_decode($row->embedding, true);
@@ -97,42 +120,43 @@ class ChatController extends Controller
                     continue;
                 }
 
-                $score = $this->cosineSimilarity($queryEmbedding, $docEmbedding);
+                // Fast similarity calculation
+                $score = $this->fastCosineSimilarity($queryEmbedding, $docEmbedding, $queryMag);
 
-                $scoredChunks[] = [
-                    'content' => $row->content,
-                    'score' => $score
-                ];
+                // Only keep chunks with decent similarity (pre-filter)
+                if ($score > 0.15) {
+                    $scoredChunks[] = [
+                        'content' => $row->content,
+                        'score' => $score
+                    ];
+                }
+            }
+
+            if (empty($scoredChunks)) {
+                return back()->with([
+                    'answer' => "I don't have relevant information to answer this question based on the uploaded documents.",
+                    'query' => $query
+                ]);
             }
 
             // Sort by similarity descending
             usort($scoredChunks, fn($a, $b) => $b['score'] <=> $a['score']);
 
-            // Get top 5 most relevant chunks
-            $topChunks = array_slice($scoredChunks, 0, 5);
+            // Get top 3 most relevant chunks (reduced from 5 for faster response)
+            $topChunks = array_slice($scoredChunks, 0, 3);
             
-            Log::info("Top 5 similarity scores: " . json_encode(array_map(fn($c) => $c['score'], $topChunks)));
+            Log::info("Top 3 similarity scores: " . json_encode(array_map(fn($c) => round($c['score'], 3), $topChunks)));
 
-            // Filter chunks with reasonable similarity (above 0.2 threshold - lowered for better results)
-            $relevantChunks = array_filter($topChunks, fn($chunk) => $chunk['score'] > 0.2);
-
-            if (empty($relevantChunks)) {
-                return back()->with([
-                    'answer' => "I don't have enough relevant information to answer this question based on the uploaded documents. (Best match score: " . number_format($topChunks[0]['score'], 3) . ")",
-                    'query' => $query
-                ]);
-            }
-
-            $topContext = collect($relevantChunks)
+            $topContext = collect($topChunks)
                 ->pluck('content')
                 ->implode("\n\n---\n\n");
 
-            Log::info("Using " . count($relevantChunks) . " relevant chunks for context");
+            Log::info("Using " . count($topChunks) . " chunks for context");
 
-            // 4) Generate final answer from LLM
+            // 4) Generate final answer from LLM (optimized)
             Log::info("Generating answer from LLM...");
 
-            $finalResponse = Http::timeout(60)
+            $finalResponse = Http::timeout(45) // Reduced from 60
                 ->withHeaders([
                     'Authorization' => 'Bearer ' . env('OPENROUTER_API_KEY'),
                     'HTTP-Referer' => env('APP_URL'),
@@ -143,15 +167,15 @@ class ChatController extends Controller
                     'messages' => [
                         [
                             "role" => "system",
-                            "content" => "You are a helpful RAG assistant. Answer questions ONLY based on the provided context. If the answer is not clearly in the context, state: 'I don't have this information in the provided documents.' Be concise and accurate."
+                            "content" => "You are a helpful assistant. Answer concisely based on the context. If unsure, say so briefly."
                         ],
                         [
                             "role" => "user",
-                            "content" => "Context from documents:\n\n$topContext\n\n---\n\nQuestion: $query\n\nAnswer based only on the context above:"
+                            "content" => "Context:\n$topContext\n\nQuestion: $query\n\nAnswer:"
                         ]
                     ],
-                    'temperature' => 0.3,
-                    'max_tokens' => 500
+                    'temperature' => 0.2, // Lower for faster, more focused responses
+                    'max_tokens' => 300 // Reduced from 500 for faster response
                 ]);
 
             if (!$finalResponse->successful()) {
@@ -182,28 +206,39 @@ class ChatController extends Controller
         }
     }
 
-    // Cosine similarity function
-    private function cosineSimilarity($a, $b)
+    // Fast cosine similarity with pre-calculated magnitude
+    private function fastCosineSimilarity($a, $b, $queryMag = null)
     {
         if (!is_array($a) || !is_array($b) || count($a) !== count($b)) {
             return 0;
         }
 
         $dot = 0;
-        $magA = 0;
         $magB = 0;
 
         for ($i = 0; $i < count($a); $i++) {
             $dot += $a[$i] * $b[$i];
-            $magA += $a[$i] ** 2;
             $magB += $b[$i] ** 2;
         }
 
-        if ($magA == 0 || $magB == 0) {
-            return 0;
+        if ($magB == 0) return 0;
+
+        // Use pre-calculated query magnitude if available
+        if ($queryMag === null) {
+            $magA = sqrt(array_sum(array_map(fn($x) => $x * $x, $a)));
+        } else {
+            $magA = $queryMag;
         }
 
-        return $dot / (sqrt($magA) * sqrt($magB));
+        if ($magA == 0) return 0;
+
+        return $dot / ($magA * sqrt($magB));
+    }
+
+    // Keep old method for backward compatibility
+    private function cosineSimilarity($a, $b)
+    {
+        return $this->fastCosineSimilarity($a, $b);
     }
 
     // Detect HR / personal questions
