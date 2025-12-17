@@ -33,4 +33,7 @@ RUN chmod -R 777 storage bootstrap/cache
 RUN php artisan storage:link || true
 
 # Render uses $PORT
-CMD php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=$PORT
+CMD php artisan migrate --force \
+ && php artisan queue:work --sleep=3 --tries=1 & \
+ php artisan serve --host=0.0.0.0 --port=$PORT
+
