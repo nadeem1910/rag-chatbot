@@ -29,5 +29,8 @@ RUN mkdir -p storage/app \
 # Permissions
 RUN chmod -R 777 storage bootstrap/cache
 
+# 👉 IMPORTANT: Storage symlink (Render safe)
+RUN php artisan storage:link || true
+
 # Render uses $PORT
 CMD php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=$PORT
