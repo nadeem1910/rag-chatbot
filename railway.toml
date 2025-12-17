@@ -1,8 +1,0 @@
-[build]
-builder = "NIXPACKS"
-
-[variables]
-PHP_VERSION = "8.3"
-
-[deploy]
-startCommand = "php artisan serve --host=0.0.0.0 --port=$PORT"
