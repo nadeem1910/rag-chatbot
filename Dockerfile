@@ -1,4 +1,4 @@
-# PHP 8.4 CLI
+# PHP 8.4 CLI 
 FROM php:8.4-cli
 
 # System dependencies
@@ -22,24 +22,18 @@ COPY . .
 # Install Laravel dependencies
 RUN composer install --no-dev --optimize-autoloader
 
-# Storage + DB
-RUN mkdir -p storage/app/documents \
-    && mkdir -p storage/framework/sessions \
+# SQLite database (Render-safe)
+RUN mkdir -p storage/app \
     && touch storage/app/database.sqlite
 
 # Permissions
 RUN chmod -R 777 storage bootstrap/cache
 
-# Storage symlink (safe)
+# 👉 IMPORTANT: Storage symlink (Render safe)
 RUN php artisan storage:link || true
 
-# 🔥 Clear & cache config (VERY IMPORTANT for Render ENV)
-RUN php artisan config:clear \
- && php artisan config:cache \
- && php artisan route:clear \
- && php artisan view:clear
-
-# Start queue + server
+# Render uses $PORT
 CMD php artisan migrate --force \
  && php artisan queue:work --sleep=3 --tries=1 & \
- php artisan serve --host=0.0.0.0 --port=$PORT
+ php artisan serve --host=0.0.0.0 --port=$PORT 
+

@@ -18,7 +18,7 @@ return [
     |
     */
 
-    'driver' => env('SESSION_DRIVER', 'cookie'),
+    'driver' => env('SESSION_DRIVER', 'database'),
 
     /*
     |--------------------------------------------------------------------------
@@ -129,7 +129,7 @@ return [
 
     'cookie' => env(
         'SESSION_COOKIE',
-        Str::slug((string) env('APP_NAME', 'laravel')).'-session'
+        Str::slug((string) env('APP_NAME', 'laravel')) . '-session'
     ),
 
     /*
@@ -156,7 +156,7 @@ return [
     |
     */
 
-    'domain' => env('SESSION_DOMAIN',null),
+    'domain' => env('SESSION_DOMAIN'),
 
     /*
     |--------------------------------------------------------------------------
@@ -169,7 +169,7 @@ return [
     |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE', true),
+    'secure' => env('SESSION_SECURE_COOKIE'),
 
     /*
     |--------------------------------------------------------------------------
@@ -182,7 +182,7 @@ return [
     |
     */
 
-    'http_only' => true,
+    'http_only' => env('SESSION_HTTP_ONLY', true),
 
     /*
     |--------------------------------------------------------------------------
@@ -193,13 +193,11 @@ return [
     | take place, and can be used to mitigate CSRF attacks. By default, we
     | will set this value to "lax" to permit secure cross-site requests.
     |
-    | See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#samesitesamesite-value
-    |
     | Supported: "lax", "strict", "none", null
     |
     */
 
-    'same_site' => env('SESSION_SAME_SITE', 'none'),
+    'same_site' => env('SESSION_SAME_SITE', 'lax'),
 
     /*
     |--------------------------------------------------------------------------
@@ -212,6 +210,6 @@ return [
     |
     */
 
-    'partitioned' => false,
+    'partitioned' => env('SESSION_PARTITIONED_COOKIE', false),
 
 ];
