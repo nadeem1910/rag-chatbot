@@ -22,18 +22,24 @@ COPY . .
 # Install Laravel dependencies
 RUN composer install --no-dev --optimize-autoloader
 
-# SQLite database (Render-safe)
-RUN mkdir -p storage/app \
+# Storage + DB
+RUN mkdir -p storage/app/documents \
+    && mkdir -p storage/framework/sessions \
     && touch storage/app/database.sqlite
 
 # Permissions
 RUN chmod -R 777 storage bootstrap/cache
 
-# 👉 IMPORTANT: Storage symlink (Render safe)
+# Storage symlink (safe)
 RUN php artisan storage:link || true
 
-# Render uses $PORT
+# 🔥 Clear & cache config (VERY IMPORTANT for Render ENV)
+RUN php artisan config:clear \
+ && php artisan config:cache \
+ && php artisan route:clear \
+ && php artisan view:clear
+
+# Start queue + server
 CMD php artisan migrate --force \
  && php artisan queue:work --sleep=3 --tries=1 & \
  php artisan serve --host=0.0.0.0 --port=$PORT
-
