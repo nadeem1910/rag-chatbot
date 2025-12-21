@@ -23,7 +23,7 @@ COPY . .
 RUN composer install --no-dev --optimize-autoloader
 
 # SQLite database (Render-safe)
-RUN mkdir -p storage/app \
+RUN mkdir -p storage/app/documents \
     && touch storage/app/database.sqlite
 
 # Permissions
